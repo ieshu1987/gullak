@@ -318,9 +318,23 @@ class UIRenderer {
               <input type="text" id="gate-input-contact" class="input-field" placeholder="e.g. priya@gmail.com / 9876543210" required>
             </div>
             <button type="submit" class="btn-primary" style="margin-top: 6px;">Claim Early Access Pass ➔</button>
+            <button type="button" class="btn-secondary" id="btn-show-admin-login" style="margin-top: 4px; font-size: 0.8rem; opacity: 0.85;">🔑 Admin / Creator Login</button>
           </form>
         </div>
       `;
+
+      document.getElementById('btn-show-admin-login')?.addEventListener('click', () => {
+        const pass = prompt('Enter Admin Master Passkey (or 8888):');
+        if (pass) {
+          try {
+            window.accessControl.loginAsAdmin(pass);
+            this.showToast('Welcome back, Admin Shikhar!', 'success');
+            this.render();
+          } catch (err) {
+            this.showToast(err.message || 'Invalid passcode', 'error');
+          }
+        }
+      });
 
       document.getElementById('form-request-access')?.addEventListener('submit', (e) => {
         e.preventDefault();

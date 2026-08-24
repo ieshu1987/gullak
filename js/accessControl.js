@@ -163,6 +163,35 @@ class AccessControlEngine {
   }
 
   /**
+   * Admin Master Key Instant Unlock
+   */
+  loginAsAdmin(passcode) {
+    const clean = (passcode || '').trim().toLowerCase();
+    if (clean === '8888' || clean === 'shikhar' || clean === 'admin') {
+      const adminUser = {
+        id: 'user-admin',
+        name: 'Shikhar (Admin)',
+        contact: 'shikhar.owner@homebudget.app',
+        contactType: 'email',
+        verified: true,
+        role: 'admin',
+        status: 'approved',
+        createdAt: new Date().toISOString()
+      };
+      this.saveCurrentUser(adminUser);
+      
+      let approved = this.getApprovedUsers();
+      if (!approved.some(u => u.id === 'user-admin')) {
+        approved.unshift(adminUser);
+        localStorage.setItem(ACCESS_STORAGE_KEYS.APPROVED_USERS, JSON.stringify(approved));
+      }
+      localStorage.removeItem(ACCESS_STORAGE_KEYS.PENDING_VERIFICATION);
+      return adminUser;
+    }
+    throw new Error('Invalid Admin Passkey. Please try again.');
+  }
+
+  /**
    * Step 2: Confirm Verification Code & Auto-Activate Pass
    */
   verifyAndSubmitRequest(enteredOtp) {
@@ -181,7 +210,16 @@ class AccessControlEngine {
     user.contactType = pendingData.contactType;
     user.verified = true;
     user.status = 'approved';
-    user.role = user.role === 'admin' ? 'admin' : 'member';
+
+    // Auto-detect Shikhar/Admin
+    const isOwner = pendingData.name.toLowerCase().includes('shikhar') || 
+                    pendingData.contact.toLowerCase().includes('shikhar') ||
+                    user.role === 'admin';
+    user.role = isOwner ? 'admin' : 'member';
+    if (isOwner) {
+      user.id = 'user-admin';
+      user.name = user.name.includes('(Admin)') ? user.name : `${user.name} (Admin)`;
+    }
     user.activatedAt = new Date().toISOString();
     this.saveCurrentUser(user);
 
