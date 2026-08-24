@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f19">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BudgetTrack">
+  <meta name="description" content="A collaborative, dual-space mobile household budget & cashflow tracking app.">
+  <link rel="manifest" href="manifest.json">
+  <title>Gullak - Household & Personal Budget</title>
+  <link rel="stylesheet" href="css/styles.css?v=5">
+</head>
+<body>
+
+  <!-- Optional Local 4-Digit PIN Lock Overlay -->
+  <div id="pin-lock-screen" class="pin-lock-overlay" style="display: none;">
+    <div class="pin-lock-container">
+      <div class="pin-lock-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <div>
+        <h2 style="font-family: var(--font-heading); font-size: 1.4rem; font-weight: 800; color: var(--text-primary);">Gullak Passcode</h2>
+        <p style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 4px;" id="pin-prompt-text">Enter your 4-digit security PIN</p>
+      </div>
+
+      <div class="pin-dots-wrap" id="pin-dots-display">
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+      </div>
+
+      <div class="pin-keypad" id="pin-keypad-grid">
+        <button type="button" class="pin-key" data-key="1">1</button>
+        <button type="button" class="pin-key" data-key="2">2</button>
+        <button type="button" class="pin-key" data-key="3">3</button>
+        <button type="button" class="pin-key" data-key="4">4</button>
+        <button type="button" class="pin-key" data-key="5">5</button>
+        <button type="button" class="pin-key" data-key="6">6</button>
+        <button type="button" class="pin-key" data-key="7">7</button>
+        <button type="button" class="pin-key" data-key="8">8</button>
+        <button type="button" class="pin-key" data-key="9">9</button>
+        <button type="button" class="pin-key key-action" id="btn-pin-clear">Clear</button>
+        <button type="button" class="pin-key" data-key="0">0</button>
+        <button type="button" class="pin-key key-action" id="btn-pin-backspace">⌫</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Access Control Gate (Displayed if visitor is not yet approved) -->
+  <div id="access-gate-screen" class="access-gate-container" style="display: none;"></div>
+
+  <!-- Mobile App Frame Container -->
+  <div class="mobile-app-wrapper" id="app-main-wrapper">
+    
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand-section">
+        <div class="brand-icon" style="background: linear-gradient(135deg, #F59E0B 0%, #FBBF24 50%, #D97706 100%); box-shadow: 0 0 16px rgba(245, 158, 11, 0.45);">
+          <!-- Golden Coin Logo -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9.5"></circle>
+            <path d="M12 6v12"></path>
+            <path d="M15 9.5H9.5a2.5 2.5 0 0 1 0-5H13"></path>
+            <path d="M9 13.5h5a2.5 2.5 0 0 1 0 5H9"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title" style="letter-spacing: -0.01em;">Gullak</h1>
+          <span class="brand-subtitle">Household & Personal Budget</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Month Selector Badge -->
+        <button class="period-badge" id="btn-open-month-picker" title="Change Month">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
+            <line x1="16" x2="16" y1="2" y2="6"></line>
+            <line x1="8" x2="8" y1="2" y2="6"></line>
+            <line x1="3" x2="21" y1="10" y2="10"></line>
+          </svg>
+          <span id="current-period-label">This Month &nbsp;▾</span>
+        </button>
+
+        <!-- Admin Notification Bell Badge -->
+        <button class="btn-icon" id="btn-header-notif" title="Pending Approvals" style="position: relative; display: none;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+          </svg>
+          <span class="notif-badge" id="header-notif-count">0</span>
+        </button>
+
+        <!-- Quick Settings Gear -->
+        <button class="btn-icon" id="btn-quick-settings" title="Settings & Admin">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Dual-Space Switcher Bar (Personal vs Household) -->
+    <div class="space-switcher-container">
+      <div class="space-switcher-track">
+        <button class="space-pill active" id="space-pill-household">
+          <span>🏠</span> Joint Household
+        </button>
+        <button class="space-pill" id="space-pill-personal">
+          <span>👤</span> My Personal
+        </button>
+      </div>
+    </div>
+
+    <!-- App Views Container -->
+    <main class="app-content">
+
+      <!-- View: Dashboard -->
+      <section id="view-dashboard" class="view-section active">
+        <!-- Rendered dynamically by ui.js -->
+      </section>
+
+      <!-- View: Budget Allocation & Splits -->
+      <section id="view-budget" class="view-section">
+        <!-- Rendered dynamically by ui.js -->
+      </section>
+
+      <!-- View: Planned Items & Household Wishlist -->
+      <section id="view-planned" class="view-section">
+        <!-- Rendered dynamically by ui.js -->
+      </section>
+
+      <!-- View: Full Transactions History & Search -->
+      <section id="view-transactions" class="view-section">
+        <div class="card" style="display: flex; flex-direction: column; gap: 12px;">
+          <input 
+            type="text" 
+            id="tx-search-input" 
+            class="input-field" 
+            placeholder="🔍 Search title, user, or notes..."
+          >
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <select id="tx-type-filter" class="select-field">
+              <option value="all">All Types</option>
+              <option value="expense">Expenses Only</option>
+              <option value="income">Income Only</option>
+            </select>
+
+            <select id="tx-cat-filter" class="select-field">
+              <option value="all">All Categories</option>
+            </select>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Sort By:</span>
+            <select id="tx-sort-filter" class="select-field" style="width: auto; padding: 4px 8px; font-size: 0.8rem;">
+              <option value="date_desc">Newest First</option>
+              <option value="date_asc">Oldest First</option>
+              <option value="amount_desc">Highest Amount</option>
+              <option value="amount_asc">Lowest Amount</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="transaction-list" id="tx-full-list">
+          <!-- Rendered dynamically -->
+        </div>
+      </section>
+
+      <!-- View: Analytics & Charts -->
+      <section id="view-analytics" class="view-section">
+        <!-- Rendered dynamically by ui.js -->
+      </section>
+
+      <!-- View: Settings & Admin Panel -->
+      <section id="view-settings" class="view-section">
+        <!-- Rendered dynamically by ui.js -->
+      </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-view="dashboard" title="Dashboard">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        <span>Home</span>
+      </button>
+
+      <button class="nav-item" data-view="budget" title="Budget Division">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="4" x2="4" y1="21" y2="14"></line>
+          <line x1="4" x2="4" y1="10" y2="3"></line>
+          <line x1="12" x2="12" y1="21" y2="12"></line>
+          <line x1="12" x2="12" y1="8" y2="3"></line>
+          <line x1="20" x2="20" y1="21" y2="16"></line>
+          <line x1="20" x2="20" y1="12" y2="3"></line>
+          <line x1="1" x2="7" y1="14" y2="14"></line>
+          <line x1="9" x2="15" y1="8" y2="8"></line>
+          <line x1="17" x2="23" y1="16" y2="16"></line>
+        </svg>
+        <span>Budgets</span>
+      </button>
+
+      <!-- Center Floating Action Button (FAB) -->
+      <div class="nav-fab-wrap">
+        <button class="fab-btn" id="btn-fab-add" title="Add Transaction">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+
+      <button class="nav-item" data-view="planned" title="Planned Items & Wishlist">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
+          <line x1="16" x2="16" y1="2" y2="6"></line>
+          <line x1="8" x2="8" y1="2" y2="6"></line>
+          <line x1="3" x2="21" y1="10" y2="10"></line>
+          <path d="m9 16 2 2 4-4"></path>
+        </svg>
+        <span>Planned</span>
+      </button>
+
+      <button class="nav-item" data-view="transactions" title="Activity">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" x2="21" y1="6" y2="6"></line>
+          <line x1="8" x2="21" y1="12" y2="12"></line>
+          <line x1="8" x2="21" y1="18" y2="18"></line>
+          <line x1="3" x2="3.01" y1="6" y2="6"></line>
+          <line x1="3" x2="3.01" y1="12" y2="12"></line>
+          <line x1="3" x2="3.01" y1="18" y2="18"></line>
+        </svg>
+        <span>Activity</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- Modal: Add / Edit Transaction Drawer -->
+  <div class="modal-backdrop" id="modal-transaction">
+    <div class="modal-drawer">
+      <div class="modal-header">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" id="modal-tx-title">Add Transaction</h2>
+        <button class="btn-icon" id="btn-close-tx-modal" style="width: 30px; height: 30px;">✕</button>
+      </div>
+
+      <form id="form-transaction" class="modal-body">
+        <input type="hidden" id="tx-hidden-type" value="expense">
+
+        <!-- Type Selector Tabs (Expense / Income) -->
+        <div class="segment-tabs">
+          <button type="button" class="segment-btn expense-active" id="tx-type-expense">▼ Expense</button>
+          <button type="button" class="segment-btn" id="tx-type-income">▲ Income</button>
+        </div>
+
+        <!-- ⚡ 1-Tap Frequent Favorites Quick Bar -->
+        <div id="quick-favorites-bar-wrap" style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">⚡ 1-Tap Frequent Favorites</span>
+          <div class="chips-row" id="quick-favorites-chips" style="gap: 6px; overflow-x: auto; padding-bottom: 2px;">
+            <!-- Populated dynamically by ui.js -->
+          </div>
+        </div>
+
+        <!-- Space Selector (Personal vs Household) -->
+        <div class="form-group">
+          <label class="form-label">Destination Space</label>
+          <select id="tx-input-space" class="select-field">
+            <option value="household">🏠 Joint Household Budget</option>
+            <option value="personal">👤 My Personal Budget</option>
+          </select>
+        </div>
+
+        <!-- Magic UPI / SMS Auto-fill Accordion -->
+        <div style="background: rgba(14, 165, 233, 0.08); border: 1px dashed var(--accent-primary); border-radius: var(--radius-md); padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="toggle-upi-paste">
+            <span style="font-size: 0.78rem; font-weight: 700; color: var(--accent-primary); display: flex; align-items: center; gap: 4px;">
+              🪄 Quick Auto-Fill from GPay / Bank SMS
+            </span>
+            <span style="font-size: 0.72rem; color: var(--text-muted);" id="upi-paste-arrow">Paste SMS ▾</span>
+          </div>
+          <div id="upi-paste-section" style="display: none; flex-direction: column; gap: 8px; margin-top: 4px;">
+            <textarea id="upi-sms-input" class="input-field" rows="2" style="font-size: 0.8rem; resize: none;" placeholder="Paste SMS (e.g. Paid Rs 350.00 to Swiggy on 23-Aug via UPI...)"></textarea>
+            <div style="display: flex; justify-content: flex-end; gap: 6px;">
+              <button type="button" class="chip-btn" id="btn-paste-clipboard" style="background: var(--bg-tertiary); color: var(--text-primary); padding: 5px 10px; font-size: 0.75rem; font-weight: 600;">📋 1-Tap Read Clipboard</button>
+              <button type="button" class="chip-btn" id="btn-parse-sms" style="background: var(--accent-primary); color: #fff; padding: 5px 12px; font-size: 0.75rem; font-weight: 700;">⚡ Parse & Fill</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Amount Input -->
+        <div class="form-group">
+          <label class="form-label">Amount</label>
+          <div class="amount-input-wrap">
+            <span class="currency-symbol-tag" id="modal-currency-tag">₹</span>
+            <input 
+              type="number" 
+              id="tx-input-amount" 
+              class="input-field amount-input" 
+              placeholder="0.00" 
+              step="0.01" 
+              min="0" 
+              required
+            >
+          </div>
+          <!-- Quick Amount Chips -->
+          <div class="chips-row">
+            <button type="button" class="chip-btn quick-amt-btn" data-add="50">+50</button>
+            <button type="button" class="chip-btn quick-amt-btn" data-add="100">+100</button>
+            <button type="button" class="chip-btn quick-amt-btn" data-add="500">+500</button>
+            <button type="button" class="chip-btn quick-amt-btn" data-add="1000">+1000</button>
+          </div>
+        </div>
+
+        <!-- Title / Description with Predictive Auto-Suggest -->
+        <div class="form-group" style="position: relative;">
+          <label class="form-label">Title / Merchant</label>
+          <input 
+            type="text" 
+            id="tx-input-title" 
+            class="input-field" 
+            placeholder="e.g. Swiggy, Milk, Electricity, Fuel..." 
+            autocomplete="off"
+            required
+          >
+          <!-- Predictive Suggestions Dropdown Container -->
+          <div id="tx-suggestions-list" class="suggestions-container" style="display: none;"></div>
+        </div>
+
+        <!-- Category Dropdown -->
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select id="tx-input-category" class="select-field" required>
+            <!-- Populated dynamically based on type -->
+          </select>
+        </div>
+
+        <!-- Date & Payment Method -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group">
+            <label class="form-label">Date</label>
+            <input type="date" id="tx-input-date" class="input-field" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Payment Method</label>
+            <select id="tx-input-method" class="select-field">
+              <option value="UPI/Online">UPI / Online (GPay)</option>
+              <option value="Credit Card">Credit Card</option>
+              <option value="Debit Card">Debit Card</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Cash">Cash</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Notes (Optional) -->
+        <div class="form-group">
+          <label class="form-label">Notes (Optional)</label>
+          <input 
+            type="text" 
+            id="tx-input-notes" 
+            class="input-field" 
+            placeholder="Additional details..."
+          >
+        </div>
+
+        <!-- Submit Button -->
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+          <button type="submit" class="btn-primary" id="btn-save-tx">Save Record</button>
+          <button type="button" class="btn-danger-outline hidden" id="btn-tx-delete">Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Customizable WhatsApp Share Drawer -->
+  <div class="modal-backdrop" id="modal-whatsapp-customizer">
+    <div class="modal-drawer">
+      <div class="modal-header">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">📤 Share Budget on WhatsApp</h2>
+        <button class="btn-icon" id="btn-close-wa-modal" style="width: 30px; height: 30px;">✕</button>
+      </div>
+      <div class="modal-body" style="gap: 14px;">
+        <span style="font-size: 0.82rem; color: var(--text-secondary);">Choose what information to include in your message:</span>
+        
+        <!-- Options Checklist -->
+        <div style="display: flex; flex-direction: column; gap: 8px; background: var(--bg-tertiary); padding: 12px; border-radius: var(--radius-md);">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+            <input type="checkbox" id="wa-opt-totals" checked>
+            <span>Total Income & Net Savings Balance</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+            <input type="checkbox" id="wa-opt-categories" checked>
+            <span>Category Budget Breakdown & Spending %</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+            <input type="checkbox" id="wa-opt-transactions">
+            <span>Recent Individual Transactions Log</span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Message Preview (Editable)</label>
+          <textarea id="wa-preview-text" class="input-field" rows="6" style="font-size: 0.82rem; font-family: monospace;"></textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <button type="button" class="btn-secondary" id="btn-wa-copy-text">📋 Copy Text</button>
+          <button type="button" class="btn-primary" id="btn-wa-confirm-send" style="background: #25D366;">📲 Send WhatsApp</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Smart Anti-Duplication Alert Dialog -->
+  <div class="modal-backdrop" id="modal-duplicate-alert">
+    <div class="modal-drawer" style="max-height: 50vh;">
+      <div class="modal-header">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" style="color: var(--accent-warning); display: flex; align-items: center; gap: 6px;">
+          ⚠️ Duplicate Alert
+        </h2>
+        <button class="btn-icon" id="btn-close-dup-modal" style="width: 30px; height: 30px;">✕</button>
+      </div>
+      <div class="modal-body" style="gap: 16px;">
+        <p id="dup-alert-desc" style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5;"></p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <button type="button" class="btn-secondary" id="btn-dup-view-existing">View Existing</button>
+          <button type="button" class="btn-primary" id="btn-dup-add-anyway" style="background: var(--accent-warning);">Add Anyway</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add / Edit Planned Item Drawer -->
+  <div class="modal-backdrop" id="modal-planned-item">
+    <div class="modal-drawer">
+      <div class="modal-header">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title" id="modal-plan-title">Add Planned Item / Bill</h2>
+        <button class="btn-icon" id="btn-close-plan-modal" style="width: 30px; height: 30px;">✕</button>
+      </div>
+
+      <form id="form-planned-item" class="modal-body">
+        <!-- Title -->
+        <div class="form-group">
+          <label class="form-label">Item / Bill Name *</label>
+          <input 
+            type="text" 
+            id="plan-input-title" 
+            class="input-field" 
+            placeholder="e.g. Health Insurance, Weekly Fruits, New Fan..." 
+            required
+          >
+        </div>
+
+        <!-- Priority Selector -->
+        <div class="form-group">
+          <label class="form-label">Priority / Urgency</label>
+          <select id="plan-input-priority" class="select-field">
+            <option value="urgent">🔴 Need Now / High Priority</option>
+            <option value="normal">🟡 Can Wait / Planned</option>
+            <option value="someday">💡 Someday / Wishlist</option>
+          </select>
+        </div>
+
+        <!-- Estimated Cost -->
+        <div class="form-group">
+          <label class="form-label">Estimated Amount (Optional)</label>
+          <input 
+            type="number" 
+            id="plan-input-amount" 
+            class="input-field" 
+            placeholder="0.00" 
+            step="0.01" 
+            min="0"
+          >
+        </div>
+
+        <!-- Category & Due Date -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="plan-input-category" class="select-field">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Target / Due Date</label>
+            <input type="date" id="plan-input-duedate" class="input-field">
+          </div>
+        </div>
+
+        <!-- Space Destination -->
+        <div class="form-group">
+          <label class="form-label">Space</label>
+          <select id="plan-input-space" class="select-field">
+            <option value="household">🏠 Joint Household List</option>
+            <option value="personal">👤 My Personal Wishlist</option>
+          </select>
+        </div>
+
+        <!-- Notes -->
+        <div class="form-group">
+          <label class="form-label">Notes (Optional)</label>
+          <input type="text" id="plan-input-notes" class="input-field" placeholder="Brand, link, or details...">
+        </div>
+
+        <!-- Save Button -->
+        <button type="submit" class="btn-primary" style="margin-top: 6px;">Save Planned Item</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: WhatsApp Planned Checklist Drawer -->
+  <div class="modal-backdrop" id="modal-whatsapp-planned">
+    <div class="modal-drawer">
+      <div class="modal-header">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">📤 Share Planned List on WhatsApp</h2>
+        <button class="btn-icon" id="btn-close-wa-plan-modal" style="width: 30px; height: 30px;">✕</button>
+      </div>
+      <div class="modal-body" style="gap: 14px;">
+        <span style="font-size: 0.82rem; color: var(--text-secondary);">Ready-to-send shopping & bills checklist:</span>
+
+        <div class="form-group">
+          <label class="form-label">Checklist Preview (Editable)</label>
+          <textarea id="wa-planned-preview-text" class="input-field" rows="8" style="font-size: 0.82rem; font-family: monospace;"></textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <button type="button" class="btn-secondary" id="btn-wa-copy-planned">📋 Copy Text</button>
+          <button type="button" class="btn-primary" id="btn-wa-send-planned" style="background: #25D366;">📲 Send WhatsApp</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Month Selector Drawer -->
+  <div class="modal-backdrop" id="modal-month-selector">
+    <div class="modal-drawer">
+      <div class="modal-header">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">Select Month</h2>
+        <button class="btn-icon" id="btn-close-month-modal" style="width: 30px; height: 30px;">✕</button>
+      </div>
+      <div class="modal-body" id="month-selector-list">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Scripts (Ordered by dependency) -->
+  <script src="js/accessControl.js?v=6"></script>
+  <script src="js/storage.js?v=6"></script>
+  <script src="js/budgetEngine.js?v=6"></script>
+  <script src="js/transactionManager.js?v=6"></script>
+  <script src="js/plannedEngine.js?v=6"></script>
+  <script src="js/habitEngine.js?v=6"></script>
+  <script src="js/syncEngine.js?v=6"></script>
+  <script src="js/ui.js?v=6"></script>
+  <script src="js/app.js?v=6"></script>
+</body>
+</html>
