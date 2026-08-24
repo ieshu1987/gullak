@@ -1494,8 +1494,37 @@ class UIRenderer {
       </div>
     `;
 
+    const currentUser = window.accessControl ? window.accessControl.getCurrentUser() : null;
+    const isUserAdmin = currentUser && currentUser.role === 'admin';
+
+    const userProfileSectionHtml = `
+      <!-- User Profile & Admin Switcher -->
+      <div class="card" style="border-color: rgba(245, 158, 11, 0.4); display: flex; justify-content: space-between; align-items: center; padding: 14px 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1rem;">
+            ${((currentUser?.name) || 'S')[0].toUpperCase()}
+          </div>
+          <div>
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 0.92rem; display: flex; align-items: center; gap: 6px;">
+              ${currentUser?.name || 'Shikhar'}
+              ${isUserAdmin ? '<span class="status-badge safe" style="font-size: 0.68rem;">👑 Admin / Owner</span>' : '<span class="status-badge warning" style="font-size: 0.68rem;">👤 Member</span>'}
+            </div>
+            <div style="font-size: 0.74rem; color: var(--text-muted);">${currentUser?.contact || 'Authenticated Device'}</div>
+          </div>
+        </div>
+        ${!isUserAdmin ? `
+          <button class="btn-secondary" id="btn-claim-admin-settings" style="padding: 6px 10px; font-size: 0.78rem; border-color: var(--accent-warning); color: var(--accent-warning);">
+            🔑 Admin Unlock
+          </button>
+        ` : `
+          <span style="font-size: 0.74rem; color: var(--accent-success); font-weight: 600;">✓ Full Privileges</span>
+        `}
+      </div>
+    `;
+
     let html = `
       <div class="settings-group">
+        ${userProfileSectionHtml}
         ${cloudSyncSectionHtml}
         ${membersSectionHtml}
 
@@ -1605,6 +1634,19 @@ class UIRenderer {
     container.innerHTML = html;
 
     // Attach Handlers
+    document.getElementById('btn-claim-admin-settings')?.addEventListener('click', () => {
+      const pass = prompt('Enter Admin Master Passkey (or 8888):');
+      if (pass) {
+        try {
+          window.accessControl.loginAsAdmin(pass);
+          this.showToast('Unlocked Admin Shikhar successfully!', 'success');
+          this.render();
+        } catch (err) {
+          this.showToast(err.message || 'Invalid passcode', 'error');
+        }
+      }
+    });
+
     document.getElementById('btn-settings-share-wa')?.addEventListener('click', () => this.openWhatsAppShareDrawer());
 
     document.getElementById('btn-sync-connect')?.addEventListener('click', async () => {

@@ -17,12 +17,20 @@ class AccessControlEngine {
 
   init() {
     let user = this.getCurrentUser();
-    if (!user) {
+    if (user) {
+      // Auto-upgrade Shikhar or Admin on every boot
+      if (user.name && user.name.toLowerCase().includes('shikhar')) {
+        user.role = 'admin';
+        user.status = 'approved';
+        user.verified = true;
+        this.saveCurrentUser(user);
+      }
+    } else {
       const hasExistingData = localStorage.getItem('hb_transactions');
       if (hasExistingData) {
         user = {
           id: 'user-admin',
-          name: 'Shikhar',
+          name: 'Shikhar (Admin)',
           contact: 'shikhar.owner@homebudget.app',
           contactType: 'email',
           verified: true,
