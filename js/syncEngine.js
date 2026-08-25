@@ -1,20 +1,33 @@
 /**
- * Real-Time Cloud Sync & Member Presence Engine for Gullak
- * Syncs household transactions and maintains the live active member roster across devices.
+ * Ultra-Light Real-Time Multi-Device Sync & Live Roster Engine for Gullak
+ * Connects family devices seamlessly over the web using zero-config real-time SSE relay.
  */
 
 const SYNC_STORAGE_KEYS = {
   ROOM_CODE: 'hb_sync_room_code',
   ROOM_PIN: 'hb_sync_room_pin',
   LAST_SYNC: 'hb_last_sync_timestamp',
-  ROOM_MEMBERS: 'hb_room_members'
+  ROOM_MEMBERS: 'hb_room_members',
+  DEVICE_ID: 'hb_device_id'
 };
 
 class CloudSyncEngine {
   constructor() {
     this.roomCode = localStorage.getItem(SYNC_STORAGE_KEYS.ROOM_CODE) || 'SHIKHAR-HOME';
     this.roomPin = localStorage.getItem(SYNC_STORAGE_KEYS.ROOM_PIN) || '1234';
-    this.syncInterval = null;
+    
+    // Unique identifier for this specific phone/device
+    let devId = localStorage.getItem(SYNC_STORAGE_KEYS.DEVICE_ID);
+    if (!devId) {
+      devId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+      localStorage.setItem(SYNC_STORAGE_KEYS.DEVICE_ID, devId);
+    }
+    this.deviceId = devId;
+
+    this.eventSource = null;
+    this.heartbeatTimer = null;
+    this.isBroadcasting = false;
+
     this.init();
   }
 
@@ -24,27 +37,219 @@ class CloudSyncEngine {
       localStorage.setItem(SYNC_STORAGE_KEYS.ROOM_PIN, '1234');
     }
 
-    // Initialize default local members roster
-    if (!localStorage.getItem(SYNC_STORAGE_KEYS.ROOM_MEMBERS)) {
-      localStorage.setItem(SYNC_STORAGE_KEYS.ROOM_MEMBERS, JSON.stringify([
+    // Initialize local members roster
+    const currentMembers = this.getRoomMembers();
+    const user = window.accessControl ? window.accessControl.getCurrentUser() : null;
+
+    if (currentMembers.length === 0 && user && user.name) {
+      this.saveRoomMembers([
         {
-          id: 'user-admin',
-          name: 'Shikhar',
-          contact: 'shikhar.owner@homebudget.app',
-          contactType: 'email',
-          role: 'admin',
+          id: user.id || 'user-admin',
+          name: user.name,
+          contact: user.contact || 'Device Owner',
+          contactType: user.contactType || 'email',
+          role: user.role || 'admin',
           joinedAt: new Date().toISOString(),
           lastActive: new Date().toISOString()
         }
-      ]));
+      ]);
     }
 
-    this.startPolling();
-    this.announceCurrentPresence();
+    // Connect real-time web stream
+    this.connectRealtimeStream();
+
+    // Broadcast presence on startup after slight delay for other modules to initialize
+    setTimeout(() => {
+      this.broadcastPresence({ isReply: false });
+    }, 800);
+
+    // Heartbeat every 60 seconds (ultra lightweight, no CPU strain)
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => {
+      this.broadcastPresence({ isReply: true });
+    }, 60000);
   }
 
-  isConnected() {
-    return !!(this.roomCode && this.roomCode.trim());
+  getTopic() {
+    const code = (this.roomCode || 'SHIKHAR-HOME').trim().toUpperCase();
+    const pin = (this.roomPin || '1234').trim();
+    // Deterministic URL-safe topic
+    let hash = 0;
+    const str = `${code}__${pin}`;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return `gullak_${code.replace(/[^A-Z0-9]/gi, '').toLowerCase()}_${Math.abs(hash).toString(36)}`;
+  }
+
+  connectRealtimeStream() {
+    if (this.eventSource) {
+      try { this.eventSource.close(); } catch (e) {}
+      this.eventSource = null;
+    }
+
+    const topic = this.getTopic();
+    try {
+      this.eventSource = new EventSource(`https://ntfy.sh/${topic}/sse`);
+      
+      this.eventSource.onmessage = (event) => {
+        try {
+          const raw = JSON.parse(event.data);
+          if (raw && raw.message) {
+            const payload = JSON.parse(raw.message);
+            // Ignore messages from this own phone
+            if (payload.deviceId === this.deviceId) return;
+            this.handleIncomingSync(payload);
+          }
+        } catch (err) {
+          // Ignore unparseable or ping frames
+        }
+      };
+
+      this.eventSource.onerror = () => {
+        // EventSource auto-reconnects in background without freezing
+      };
+    } catch (e) {
+      console.warn('Realtime sync connection info:', e);
+    }
+  }
+
+  handleIncomingSync(payload) {
+    if (!payload) return;
+    let needsRerender = false;
+
+    // 1. Sync Remote Member into Local Roster
+    if (payload.user && payload.user.name) {
+      let members = this.getRoomMembers();
+      const existingIdx = members.findIndex(m => 
+        (payload.user.id && m.id === payload.user.id) ||
+        (payload.user.contact && m.contact === payload.user.contact) ||
+        m.name.toLowerCase().trim() === payload.user.name.toLowerCase().trim()
+      );
+
+      const remoteMember = {
+        id: payload.user.id || 'user-' + Date.now(),
+        name: payload.user.name,
+        contact: payload.user.contact || 'Verified User',
+        contactType: payload.user.contactType || 'email',
+        role: payload.user.role || 'member',
+        joinedAt: payload.user.joinedAt || new Date().toISOString(),
+        lastActive: new Date().toISOString()
+      };
+
+      if (existingIdx !== -1) {
+        members[existingIdx] = { ...members[existingIdx], ...remoteMember };
+      } else {
+        members.push(remoteMember);
+      }
+
+      this.saveRoomMembers(members);
+      needsRerender = true;
+
+      // If this was an initial announcement (not a reply), send back our presence
+      if (!payload.isReply) {
+        this.broadcastPresence({ isReply: true });
+      }
+    }
+
+    // 2. Sync Shared Household Transactions
+    if (payload.householdTransactions && Array.isArray(payload.householdTransactions)) {
+      if (window.storageEngine && typeof window.storageEngine.mergeHouseholdTransactions === 'function') {
+        const added = window.storageEngine.mergeHouseholdTransactions(payload.householdTransactions);
+        if (added > 0) {
+          needsRerender = true;
+        }
+      }
+    }
+
+    // Update UI smoothly
+    if (needsRerender && window.uiRenderer) {
+      if (window.uiRenderer.currentView === 'settings') {
+        const settings = window.storageEngine ? window.storageEngine.getSettings() : {};
+        window.uiRenderer.renderSettings(settings);
+      } else {
+        window.uiRenderer.render();
+      }
+    }
+  }
+
+  async broadcastPresence(options = {}) {
+    if (this.isBroadcasting) return;
+    this.isBroadcasting = true;
+
+    try {
+      const user = window.accessControl ? window.accessControl.getCurrentUser() : null;
+      if (!user || !user.name) {
+        this.isBroadcasting = false;
+        return;
+      }
+
+      // Keep self active in local roster
+      let members = this.getRoomMembers();
+      const selfIdx = members.findIndex(m => 
+        (user.id && m.id === user.id) || 
+        m.name.toLowerCase().trim() === user.name.toLowerCase().trim()
+      );
+
+      const selfEntry = {
+        id: user.id || 'user-' + Date.now(),
+        name: user.name,
+        contact: user.contact || '',
+        contactType: user.contactType || 'email',
+        role: user.role || 'member',
+        joinedAt: user.createdAt || new Date().toISOString(),
+        lastActive: new Date().toISOString()
+      };
+
+      if (selfIdx !== -1) {
+        members[selfIdx] = { ...members[selfIdx], ...selfEntry };
+      } else {
+        members.unshift(selfEntry);
+      }
+      this.saveRoomMembers(members);
+
+      // Publish to cloud room topic
+      const topic = this.getTopic();
+      const householdTx = (window.storageEngine ? window.storageEngine.getTransactions('household') : []).slice(0, 80);
+
+      const payload = {
+        deviceId: this.deviceId,
+        isReply: !!options.isReply,
+        user: selfEntry,
+        householdTransactions: householdTx,
+        timestamp: Date.now()
+      };
+
+      await fetch(`https://ntfy.sh/${topic}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      localStorage.setItem(SYNC_STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+    } catch (e) {
+      // offline silent fallback
+    } finally {
+      this.isBroadcasting = false;
+    }
+  }
+
+  async connectRoom(roomCode, roomPin = '1234') {
+    const cleanCode = (roomCode || '').trim().toUpperCase();
+    if (!cleanCode) {
+      throw new Error('Please enter a valid Household Room Code');
+    }
+
+    localStorage.setItem(SYNC_STORAGE_KEYS.ROOM_CODE, cleanCode);
+    localStorage.setItem(SYNC_STORAGE_KEYS.ROOM_PIN, roomPin.trim());
+    localStorage.setItem(SYNC_STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+    this.roomCode = cleanCode;
+    this.roomPin = roomPin.trim();
+
+    this.connectRealtimeStream();
+    await this.broadcastPresence({ isReply: false });
+    return true;
   }
 
   getRoomDetails() {
@@ -52,7 +257,7 @@ class CloudSyncEngine {
       roomCode: localStorage.getItem(SYNC_STORAGE_KEYS.ROOM_CODE) || 'SHIKHAR-HOME',
       roomPin: localStorage.getItem(SYNC_STORAGE_KEYS.ROOM_PIN) || '1234',
       lastSync: localStorage.getItem(SYNC_STORAGE_KEYS.LAST_SYNC) || null,
-      status: this.isConnected() ? 'connected' : 'disconnected'
+      status: 'connected'
     };
   }
 
@@ -67,136 +272,6 @@ class CloudSyncEngine {
 
   saveRoomMembers(members) {
     localStorage.setItem(SYNC_STORAGE_KEYS.ROOM_MEMBERS, JSON.stringify(members));
-  }
-
-  /**
-   * Broadcast current user presence
-   */
-  announceCurrentPresence() {
-    const user = window.accessControl ? window.accessControl.getCurrentUser() : null;
-    if (user && user.name) {
-      this.broadcastMemberProfile(user);
-    }
-  }
-
-  /**
-   * Register or update member in the room roster
-   */
-  broadcastMemberProfile(user) {
-    if (!user || !user.name) return;
-
-    let members = this.getRoomMembers();
-    const existing = members.find(m => m.id === user.id || (user.contact && m.contact === user.contact) || m.name.toLowerCase() === user.name.toLowerCase());
-
-    if (existing) {
-      existing.name = user.name;
-      existing.contact = user.contact || existing.contact;
-      existing.lastActive = new Date().toISOString();
-      if (user.role) existing.role = user.role;
-    } else {
-      members.push({
-        id: user.id || 'user-' + Date.now(),
-        name: user.name,
-        contact: user.contact || 'Verified User',
-        contactType: user.contactType || 'email',
-        role: user.role || 'member',
-        joinedAt: user.activatedAt || new Date().toISOString(),
-        lastActive: new Date().toISOString()
-      });
-    }
-
-    this.saveRoomMembers(members);
-
-    // Also push to relay if online
-    this.pushPresenceToRelay(user);
-  }
-
-  async pushPresenceToRelay(user) {
-    // Cloud Room presence relay
-    try {
-      const payload = {
-        room: this.roomCode,
-        user: {
-          id: user.id,
-          name: user.name,
-          contact: user.contact,
-          role: user.role,
-          timestamp: Date.now()
-        }
-      };
-
-      // Broadcast channel for same-origin tabs / windows
-      if (typeof BroadcastChannel !== 'undefined') {
-        const bc = new BroadcastChannel('gullak_sync_channel');
-        bc.postMessage(payload);
-      }
-    } catch (e) {
-      // offline silent fallback
-    }
-  }
-
-  async connectRoom(roomCode, roomPin = '1234') {
-    const cleanCode = roomCode.trim().toUpperCase();
-    if (!cleanCode) {
-      throw new Error('Please enter a valid Household Room Code');
-    }
-
-    localStorage.setItem(SYNC_STORAGE_KEYS.ROOM_CODE, cleanCode);
-    localStorage.setItem(SYNC_STORAGE_KEYS.ROOM_PIN, roomPin.trim());
-    localStorage.setItem(SYNC_STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
-    this.roomCode = cleanCode;
-    this.roomPin = roomPin.trim();
-
-    this.announceCurrentPresence();
-    this.startPolling();
-    return true;
-  }
-
-  disconnectRoom() {
-    localStorage.removeItem(SYNC_STORAGE_KEYS.ROOM_CODE);
-    localStorage.removeItem(SYNC_STORAGE_KEYS.ROOM_PIN);
-    localStorage.removeItem(SYNC_STORAGE_KEYS.LAST_SYNC);
-    this.roomCode = '';
-    this.roomPin = '';
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
-  }
-
-  startPolling() {
-    if (this.syncInterval) clearInterval(this.syncInterval);
-    
-    // BroadcastChannel listener
-    if (typeof BroadcastChannel !== 'undefined') {
-      try {
-        const bc = new BroadcastChannel('gullak_sync_channel');
-        bc.onmessage = (event) => {
-          if (event.data && event.data.user) {
-            this.broadcastMemberProfile(event.data.user);
-            if (window.uiRenderer && window.uiRenderer.currentView === 'settings') {
-              const settings = window.storageEngine ? window.storageEngine.getSettings() : {};
-              window.uiRenderer.renderSettings(settings);
-            }
-          }
-        };
-      } catch (e) {}
-    }
-
-    // Periodic background sync heartbeat (every 10 seconds)
-    this.syncInterval = setInterval(() => {
-      this.syncHouseholdData();
-    }, 10000);
-  }
-
-  async syncHouseholdData() {
-    if (!this.isConnected()) return;
-    try {
-      localStorage.setItem(SYNC_STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
-      this.announceCurrentPresence();
-    } catch (e) {
-      console.warn('Sync tick error:', e);
-    }
   }
 }
 

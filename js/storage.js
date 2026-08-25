@@ -220,6 +220,30 @@ class StorageEngine {
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
   }
 
+  mergeHouseholdTransactions(remoteList) {
+    if (!Array.isArray(remoteList) || remoteList.length === 0) return 0;
+    const current = this.getTransactions();
+    const existingMap = new Map();
+    current.forEach(t => existingMap.set(t.id, t));
+
+    let addedCount = 0;
+    remoteList.forEach(rt => {
+      if (rt && rt.id && rt.space === 'household') {
+        if (!existingMap.has(rt.id)) {
+          current.push(rt);
+          existingMap.set(rt.id, rt);
+          addedCount++;
+        }
+      }
+    });
+
+    if (addedCount > 0) {
+      current.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      this.saveTransactions(current);
+    }
+    return addedCount;
+  }
+
   addTransaction(transaction) {
     const transactions = this.getTransactions();
     const activeSpace = this.getActiveSpace();
@@ -234,6 +258,12 @@ class StorageEngine {
     };
     transactions.unshift(newTx);
     this.saveTransactions(transactions);
+
+    // Notify sync if household space
+    if (newTx.space === 'household' && window.syncEngine && typeof window.syncEngine.broadcastPresence === 'function') {
+      window.syncEngine.broadcastPresence({ isReply: true });
+    }
+
     return newTx;
   }
 
@@ -243,6 +273,11 @@ class StorageEngine {
     if (index !== -1) {
       transactions[index] = { ...transactions[index], ...updatedData, updatedAt: new Date().toISOString() };
       this.saveTransactions(transactions);
+
+      if (transactions[index].space === 'household' && window.syncEngine && typeof window.syncEngine.broadcastPresence === 'function') {
+        window.syncEngine.broadcastPresence({ isReply: true });
+      }
+
       return transactions[index];
     }
     return null;

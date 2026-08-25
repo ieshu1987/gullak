@@ -1429,22 +1429,25 @@ class UIRenderer {
     });
     const allMembersList = Object.values(memberMap);
 
-    let membersListHtml = allMembersList.map(u => `
+    let membersListHtml = allMembersList.map(u => {
+      const isAdmin = u.role === 'admin' || (u.name && u.name.toLowerCase().includes('shikhar'));
+      return `
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--bg-tertiary); border-radius: var(--radius-md); font-size: 0.84rem;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(245, 158, 11, 0.2); color: var(--accent-warning); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: ${isAdmin ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' : 'rgba(99, 102, 241, 0.2)'}; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem;">
             ${(u.name || 'U')[0].toUpperCase()}
           </div>
           <div>
             <div style="font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-              ${u.name} ${u.role === 'admin' ? '<span class="status-badge safe" style="font-size: 0.65rem;">Admin</span>' : '<span class="status-badge safe" style="font-size: 0.65rem;">Member</span>'}
+              ${u.name} ${isAdmin ? '<span class="status-badge safe" style="font-size: 0.65rem;">👑 Admin</span>' : '<span class="status-badge safe" style="font-size: 0.65rem;">👤 Member</span>'}
             </div>
             <div style="font-size: 0.72rem; color: var(--text-muted);">${u.contact || 'Verified User'}</div>
           </div>
         </div>
         <span style="font-size: 0.72rem; color: var(--accent-success); font-weight: 600;">● Active</span>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     const membersSectionHtml = `
       <!-- Active Household Members Roster -->
